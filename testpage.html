@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Bestell-App mit Datenbank</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font for a modern look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7fafc; }
+        .focus-ring:focus { outline: none; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.3); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
+        <header class="text-center mb-8 md:mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-red-700">Sammel-Bestellung</h1>
+            <p class="text-gray-600 mt-2 text-lg">Für Pizza, Pasta & mehr – einfach und schnell!</p>
+        </header>
+
+        <main class="space-y-8">
+            <!-- App content will be rendered here by JavaScript -->
+            <div id="app-container"></div>
+        </main>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc, getDocs, query, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBzIgSa17e0xADhmUAP29vMSqN1GRjOCFk",
+            authDomain: "pizzaorder-fec41.firebaseapp.com",
+            projectId: "pizzaorder-fec41",
+            storageBucket: "pizzaorder-fec41.firebasestorage.app",
+            messagingSenderId: "662851560067",
+            appId: "1:662851560067:web:60b5843f159a11821671b6",
+            measurementId: "G-MMFJKPWZML"
+        };
+
+        let db;
+
+        const pizzerias = {
+            venezia: { name: "Venezia", menu: ["Margherita", "Funghi", "Cardinale", "Salami", "Prosciutto", "Hawaii", "Diavolo", "Provinciale", "Quattro Stagioni", "Capricciosa", "Tonno", "Rusticana", "Al Capone", "Quattro Formaggi", "Venezia", "Spinaci", "Calzone", "Vegetaria", "Primavera", "Frutti di Mare"] },
+            bellaItalia: { name: "Bella Italia", menu: ["Pizza", "Pasta", "Salat", "Kebab", "Burger"] },
+            mavec: { name: "Ristorante La Vita Mavec", menu: ["Pizza (groß)", "Pizza (klein)"] }
+        };
+
+        const appContainer = document.getElementById('app-container');
+        let currentOrdersUnsubscribe = null;
+
+        // --- Main Router ---
+        const handleRouteChange = async () => {
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                await renderOrderScreen(hash);
+            } else {
+                await renderHomeScreen();
+            }
+        };
+
+        // --- Screen Renderers ---
+        const renderHomeScreen = async () => {
+            appContainer.innerHTML = `
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-semibold text-gray-700">Aktive Bestell-Runden</h2>
+                        <button id="new-round-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 focus-ring">Neue Runde starten</button>
+                    </div>
+                    <div id="rounds-list" class="space-y-2">Lädt Runden...</div>
+                </div>`;
+            
+            document.getElementById('new-round-btn').addEventListener('click', () => {
+                const password = prompt("Bitte Kennwort eingeben:", "");
+                if (password === "PizzaEngel") {
+                    renderNewRoundScreen();
+                } else if (password !== null) {
+                    alert("Falsches Kennwort.");
+                }
+            });
+
+            const roundsRef = collection(db, 'orderRounds');
+            const q = query(roundsRef);
+            onSnapshot(q, (snapshot) => {
+                const roundsList = document.getElementById('rounds-list');
+                if (snapshot.empty) {
+                    roundsList.innerHTML = '<p class="text-gray-500">Keine aktiven Runden. Starte eine neue!</p>';
+                    return;
+                }
+                roundsList.innerHTML = snapshot.docs.map(doc => {
+                    const round = doc.data();
+                    const roundDate = round.createdAt?.toDate().toLocaleDateString('de-DE') || 'N/A';
+                    return `
+                        <a href="#${doc.id}" class="block p-4 bg-gray-50 hover:bg-red-50 rounded-lg border">
+                            <div class="font-semibold text-lg text-red-700">${round.roundName}</div>
+                            <div class="text-sm text-gray-600">Bestellung bei: <strong>${pizzerias[round.pizzeriaId]?.name || 'Unbekannt'}</strong> - Erstellt am ${roundDate}</div>
+                        </a>`;
+                }).join('');
+            });
+        };
+
+        const renderNewRoundScreen = () => {
+            const pizzeriaOptions = Object.entries(pizzerias).map(([id, data]) => `<option value="${id}">${data.name}</option>`).join('');
+            appContainer.innerHTML = `
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold mb-4">Neue Bestell-Runde erstellen</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="round-name" class="block text-sm font-medium text-gray-700">Name der Runde (z.B. Mittagessen IT)</label>
+                            <input type="text" id="round-name" class="mt-1 w-full p-2 border rounded-md">
+                        </div>
+                        <div>
+                            <label for="pizzeria-select" class="block text-sm font-medium text-gray-700">Pizzeria auswählen</label>
+                            <select id="pizzeria-select" class="mt-1 w-full p-2 border rounded-md">${pizzeriaOptions}</select>
+                        </div>
+                        <div class="flex gap-4">
+                            <button id="create-round-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700">Erstellen</button>
+                            <button id="cancel-round-btn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md hover:bg-gray-300">Abbrechen</button>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.getElementById('create-round-btn').addEventListener('click', async () => {
+                const roundName = document.getElementById('round-name').value.trim();
+                const pizzeriaId = document.getElementById('pizzeria-select').value;
+                if (!roundName) {
+                    alert("Bitte einen Namen für die Runde eingeben.");
+                    return;
+                }
+                const roundsRef = collection(db, 'orderRounds');
+                const newRoundDoc = await addDoc(roundsRef, {
+                    roundName,
+                    pizzeriaId,
+                    createdAt: serverTimestamp()
+                });
+                window.location.hash = newRoundDoc.id;
+            });
+            document.getElementById('cancel-round-btn').addEventListener('click', () => window.location.hash = '');
+        };
+        
+        const renderOrderScreen = async (roundId) => {
+            const roundRef = doc(db, 'orderRounds', roundId);
+            const roundSnap = await getDoc(roundRef);
+
+            if (!roundSnap.exists()) {
+                appContainer.innerHTML = `<p class="text-red-500">Bestell-Runde nicht gefunden.</p><a href="#">Zurück zur Übersicht</a>`;
+                return;
+            }
+
+            const roundData = roundSnap.data();
+            const pizzeria = pizzerias[roundData.pizzeriaId];
+            const menuOptions = pizzeria.menu.sort().map(item => `<option value="${item}">${item}</option>`).join('');
+
+            appContainer.innerHTML = `
+                <!-- Share Link -->
+                <div class="bg-white p-4 rounded-xl shadow-lg">
+                    <label class="block text-sm font-medium text-gray-700">Teile diesen Link mit deinen Kollegen:</label>
+                    <input type="text" readonly value="${window.location.href}" class="w-full p-2 mt-1 bg-gray-100 border rounded-md" onclick="this.select()">
+                </div>
+                
+                <!-- Input Form -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold mb-4 border-b pb-3 text-gray-700">Neue Bestellung für "${roundData.roundName}"</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
+                        <div class="md:col-span-2"><label for="nameInput" class="block text-sm font-medium">Dein Name</label><input type="text" id="nameInput" class="w-full p-2 border rounded-md"></div>
+                        <div class="md:col-span-2">
+                            <label for="pizzaSelect" class="block text-sm font-medium">Deine Bestellung</label>
+                            <select id="pizzaSelect" class="w-full p-2 border rounded-md">${menuOptions}</select>
+                            <input type="text" id="customOrderInput" placeholder="Eigene Eingabe..." class="w-full p-2 border rounded-md hidden">
+                            <label class="flex items-center mt-2"><input type="checkbox" id="customOrderToggle" class="mr-2"> Eigene Bestellung</label>
+                        </div>
+                        <div class="md:col-span-1"><label for="priceInput" class="block text-sm font-medium">Preis (€)</label><input type="number" id="priceInput" class="w-full p-2 border rounded-md"></div>
+                        <div class="md:col-span-1 self-end"><button id="addOrderBtn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md">Hinzufügen</button></div>
+                    </div>
+                    <p id="error-message" class="text-red-500 text-sm mt-2 h-4"></p>
+                </div>
+
+                <!-- Order Summary -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-semibold">Bestellübersicht (${pizzeria.name})</h2>
+                        <button id="resetOrdersBtn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md">Liste zurücksetzen</button>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div><h3 class="text-xl font-medium mb-3">Einzelbestellungen</h3><div id="individualOrders"></div></div>
+                        <div><h3 class="text-xl font-medium mb-3">Zusammenfassung</h3><div id="consolidatedOrders"></div><div id="totalPriceContainer" class="mt-4 pt-4 border-t"></div></div>
+                    </div>
+                </div>
+            `;
+            
+            setupOrderScreenEventListeners(roundId);
+        };
+
+        // --- Event Listeners & Logic for Order Screen ---
+        const setupOrderScreenEventListeners = (roundId) => {
+            const ordersCollectionRef = collection(db, 'orderRounds', roundId, 'orders');
+
+            // Unsubscribe from previous listener if it exists
+            if (currentOrdersUnsubscribe) currentOrdersUnsubscribe();
+            
+            currentOrdersUnsubscribe = onSnapshot(ordersCollectionRef, (snapshot) => {
+                const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderOrderLists(orders);
+            });
+
+            document.getElementById('addOrderBtn').addEventListener('click', async () => {
+                const name = document.getElementById('nameInput').value.trim();
+                const isCustom = document.getElementById('customOrderToggle').checked;
+                const item = isCustom ? document.getElementById('customOrderInput').value.trim() : document.getElementById('pizzaSelect').value;
+                const price = parseFloat(document.getElementById('priceInput').value);
+
+                if (!name || !item || isNaN(price) || price <= 0) {
+                    document.getElementById('error-message').textContent = 'Bitte alle Felder korrekt ausfüllen.';
+                    return;
+                }
+                document.getElementById('error-message').textContent = '';
+                
+                await addDoc(ordersCollectionRef, { name, item, price });
+                document.getElementById('nameInput').value = '';
+                document.getElementById('customOrderInput').value = '';
+                document.getElementById('priceInput').value = '';
+                document.getElementById('pizzaSelect').selectedIndex = 0;
+            });
+
+            document.getElementById('resetOrdersBtn').addEventListener('click', async () => {
+                const password = prompt("Kennwort zum Zurücksetzen:", "");
+                if (password === "PizzaEngel") {
+                    const snapshot = await getDocs(ordersCollectionRef);
+                    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+                    await Promise.all(deletePromises);
+                } else if (password !== null) {
+                    alert("Falsches Kennwort.");
+                }
+            });
+
+            document.getElementById('customOrderToggle').addEventListener('change', (e) => {
+                document.getElementById('pizzaSelect').classList.toggle('hidden', e.target.checked);
+                document.getElementById('customOrderInput').classList.toggle('hidden', !e.target.checked);
+            });
+        };
+
+        const renderOrderLists = (orders) => {
+            const individualContainer = document.getElementById('individualOrders');
+            const consolidatedContainer = document.getElementById('consolidatedOrders');
+            const totalContainer = document.getElementById('totalPriceContainer');
+
+            if (orders.length === 0) {
+                individualContainer.innerHTML = '<p class="text-gray-500">Noch keine Bestellungen.</p>';
+                consolidatedContainer.innerHTML = '';
+                totalContainer.innerHTML = '';
+                return;
+            }
+
+            individualContainer.innerHTML = orders.map(order => `
+                <div class="py-2 flex justify-between items-center border-b">
+                    <span><span class="font-semibold">${order.name}</span> bestellt <span class="text-red-600">${order.item}</span> für <strong>${order.price.toFixed(2)}€</strong></span>
+                    <button data-id="${order.id}" class="delete-btn text-xs bg-gray-200 px-2 py-1 rounded">Löschen</button>
+                </div>`).join('');
+            
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = e.target.dataset.id;
+                    const password = prompt("Kennwort zum Löschen:", "");
+                    if (password === "PizzaEngel") {
+                        const roundId = window.location.hash.substring(1);
+                        await deleteDoc(doc(db, 'orderRounds', roundId, 'orders', id));
+                    } else if (password !== null) {
+                        alert("Falsches Kennwort.");
+                    }
+                });
+            });
+
+            const counts = orders.reduce((acc, {item}) => ({...acc, [item]: (acc[item] || 0) + 1}), {});
+            consolidatedContainer.innerHTML = Object.entries(counts).map(([item, count]) => `
+                <div class="py-1 flex justify-between"><span>${item}</span><span class="font-bold">${count}x</span></div>`).join('');
+
+            const total = orders.reduce((sum, {price}) => sum + price, 0);
+            totalContainer.innerHTML = `<div class="flex justify-between text-xl font-bold mt-2"><span >Gesamt:</span><span>${total.toFixed(2)}€</span></div>`;
+        };
+
+        // --- Initial Load ---
+        (async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                const auth = getAuth(app);
+                await signInAnonymously(auth);
+                
+                window.addEventListener('hashchange', handleRouteChange);
+                handleRouteChange(); // Initial route handling
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                appContainer.innerHTML = `<p class="text-red-500">App konnte nicht initialisiert werden.</p>`;
+            }
+        })();
+    </script>
+</body>
+</html>
