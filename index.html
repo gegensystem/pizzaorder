@@ -330,16 +330,33 @@
             }
 
             async function resetOrders() {
-                console.log("Resetting all orders...");
-                try {
-                    const q = query(ordersCollectionRef);
-                    const querySnapshot = await getDocs(q);
-                    querySnapshot.forEach(async (document) => {
-                        await deleteDoc(doc(db, "orders", document.id));
-                    });
-                } catch (error) {
-                    console.error("Error resetting orders: ", error);
+                const password = prompt("Bitte geben Sie das Kennwort ein, um die Liste zurückzusetzen:", "");
+
+                errorMessage.textContent = ''; // Clear previous messages
+
+                // Proceed only if the user entered the correct password
+                if (password === "PizzaEngel") {
+                    console.log("Password correct. Resetting all orders...");
+                    try {
+                        const q = query(ordersCollectionRef);
+                        const querySnapshot = await getDocs(q);
+                        
+                        // Create an array of promises for all delete operations
+                        const deletePromises = querySnapshot.docs.map(document => 
+                            deleteDoc(doc(db, "orders", document.id))
+                        );
+                        
+                        // Wait for all documents to be deleted
+                        await Promise.all(deletePromises);
+                        
+                    } catch (error) {
+                        console.error("Error resetting orders: ", error);
+                        errorMessage.textContent = 'Fehler beim Zurücksetzen der Liste.';
+                    }
+                } else if (password !== null) { // User entered something, but it was incorrect
+                    errorMessage.textContent = 'Falsches Kennwort.';
                 }
+                // If the user clicks "Cancel", the prompt returns null and nothing happens.
             }
 
             // --- EVENT LISTENERS ---
