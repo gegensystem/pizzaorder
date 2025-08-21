@@ -91,15 +91,17 @@
             const q = query(roundsRef);
             onSnapshot(q, (snapshot) => {
                 const roundsList = document.getElementById('rounds-list');
+                if (!roundsList) return; // Guard against element not being on the page
                 if (snapshot.empty) {
                     roundsList.innerHTML = '<p class="text-gray-500">Keine aktiven Runden. Starte eine neue!</p>';
                     return;
                 }
-                roundsList.innerHTML = snapshot.docs.map(doc => {
+                const sortedDocs = snapshot.docs.sort((a, b) => (b.data().createdAt?.toMillis() || 0) - (a.data().createdAt?.toMillis() || 0));
+                roundsList.innerHTML = sortedDocs.map(doc => {
                     const round = doc.data();
                     const roundDate = round.createdAt?.toDate().toLocaleDateString('de-DE') || 'N/A';
                     return `
-                        <a href="#${doc.id}" class="block p-4 bg-gray-50 hover:bg-red-50 rounded-lg border">
+                        <a href="#${doc.id}" class="block p-4 bg-gray-50 hover:bg-red-50 rounded-lg border transition-colors">
                             <div class="font-semibold text-lg text-red-700">${round.roundName}</div>
                             <div class="text-sm text-gray-600">Bestellung bei: <strong>${pizzerias[round.pizzeriaId]?.name || 'Unbekannt'}</strong> - Erstellt am ${roundDate}</div>
                         </a>`;
@@ -115,15 +117,15 @@
                     <div class="space-y-4">
                         <div>
                             <label for="round-name" class="block text-sm font-medium text-gray-700">Name der Runde (z.B. Mittagessen IT)</label>
-                            <input type="text" id="round-name" class="mt-1 w-full p-2 border rounded-md">
+                            <input type="text" id="round-name" class="mt-1 w-full p-2 border rounded-md focus-ring">
                         </div>
                         <div>
                             <label for="pizzeria-select" class="block text-sm font-medium text-gray-700">Pizzeria auswählen</label>
-                            <select id="pizzeria-select" class="mt-1 w-full p-2 border rounded-md">${pizzeriaOptions}</select>
+                            <select id="pizzeria-select" class="mt-1 w-full p-2 border rounded-md focus-ring">${pizzeriaOptions}</select>
                         </div>
                         <div class="flex gap-4">
-                            <button id="create-round-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700">Erstellen</button>
-                            <button id="cancel-round-btn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md hover:bg-gray-300">Abbrechen</button>
+                            <button id="create-round-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 focus-ring">Erstellen</button>
+                            <button id="cancel-round-btn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md hover:bg-gray-300 focus-ring">Abbrechen</button>
                         </div>
                     </div>
                 </div>`;
@@ -135,13 +137,18 @@
                     alert("Bitte einen Namen für die Runde eingeben.");
                     return;
                 }
-                const roundsRef = collection(db, 'orderRounds');
-                const newRoundDoc = await addDoc(roundsRef, {
-                    roundName,
-                    pizzeriaId,
-                    createdAt: serverTimestamp()
-                });
-                window.location.hash = newRoundDoc.id;
+                try {
+                    const roundsRef = collection(db, 'orderRounds');
+                    const newRoundDoc = await addDoc(roundsRef, {
+                        roundName,
+                        pizzeriaId,
+                        createdAt: serverTimestamp()
+                    });
+                    window.location.hash = newRoundDoc.id;
+                } catch (error) {
+                    console.error("Fehler beim Erstellen der Runde:", error);
+                    alert("Fehler beim Erstellen der Runde. Bitte überprüfen Sie die Firebase-Sicherheitsregeln in der Konsole.");
+                }
             });
             document.getElementById('cancel-round-btn').addEventListener('click', () => window.location.hash = '');
         };
@@ -151,7 +158,7 @@
             const roundSnap = await getDoc(roundRef);
 
             if (!roundSnap.exists()) {
-                appContainer.innerHTML = `<p class="text-red-500">Bestell-Runde nicht gefunden.</p><a href="#">Zurück zur Übersicht</a>`;
+                appContainer.innerHTML = `<div class="bg-white p-6 rounded-xl shadow-lg text-center"><p class="text-red-500">Bestell-Runde nicht gefunden.</p><a href="#" class="mt-4 inline-block text-red-600 hover:underline">Zurück zur Übersicht</a></div>`;
                 return;
             }
 
@@ -160,34 +167,34 @@
             const menuOptions = pizzeria.menu.sort().map(item => `<option value="${item}">${item}</option>`).join('');
 
             appContainer.innerHTML = `
-                <!-- Share Link -->
-                <div class="bg-white p-4 rounded-xl shadow-lg">
-                    <label class="block text-sm font-medium text-gray-700">Teile diesen Link mit deinen Kollegen:</label>
-                    <input type="text" readonly value="${window.location.href}" class="w-full p-2 mt-1 bg-gray-100 border rounded-md" onclick="this.select()">
+                <div class="bg-white p-4 rounded-xl shadow-lg flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Teile diesen Link mit deinen Kollegen:</label>
+                        <input type="text" readonly value="${window.location.href}" class="w-full p-2 mt-1 bg-gray-100 border rounded-md" onclick="this.select()">
+                    </div>
+                    <a href="#" class="w-full sm:w-auto text-center bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md hover:bg-gray-300 focus-ring transition-colors">Zurück zur Übersicht</a>
                 </div>
                 
-                <!-- Input Form -->
                 <div class="bg-white p-6 rounded-xl shadow-lg">
                     <h2 class="text-2xl font-semibold mb-4 border-b pb-3 text-gray-700">Neue Bestellung für "${roundData.roundName}"</h2>
                     <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
-                        <div class="md:col-span-2"><label for="nameInput" class="block text-sm font-medium">Dein Name</label><input type="text" id="nameInput" class="w-full p-2 border rounded-md"></div>
+                        <div class="md:col-span-2"><label for="nameInput" class="block text-sm font-medium">Dein Name</label><input type="text" id="nameInput" class="w-full p-2 border rounded-md focus-ring"></div>
                         <div class="md:col-span-2">
                             <label for="pizzaSelect" class="block text-sm font-medium">Deine Bestellung</label>
-                            <select id="pizzaSelect" class="w-full p-2 border rounded-md">${menuOptions}</select>
-                            <input type="text" id="customOrderInput" placeholder="Eigene Eingabe..." class="w-full p-2 border rounded-md hidden">
-                            <label class="flex items-center mt-2"><input type="checkbox" id="customOrderToggle" class="mr-2"> Eigene Bestellung</label>
+                            <select id="pizzaSelect" class="w-full p-2 border rounded-md focus-ring">${menuOptions}</select>
+                            <input type="text" id="customOrderInput" placeholder="Eigene Eingabe..." class="w-full p-2 border rounded-md hidden focus-ring">
+                            <label class="flex items-center mt-2 cursor-pointer"><input type="checkbox" id="customOrderToggle" class="mr-2"> Eigene Bestellung</label>
                         </div>
-                        <div class="md:col-span-1"><label for="priceInput" class="block text-sm font-medium">Preis (€)</label><input type="number" id="priceInput" class="w-full p-2 border rounded-md"></div>
-                        <div class="md:col-span-1 self-end"><button id="addOrderBtn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md">Hinzufügen</button></div>
+                        <div class="md:col-span-1"><label for="priceInput" class="block text-sm font-medium">Preis (€)</label><input type="number" id="priceInput" class="w-full p-2 border rounded-md focus-ring"></div>
+                        <div class="md:col-span-1 self-end"><button id="addOrderBtn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md focus-ring">Hinzufügen</button></div>
                     </div>
                     <p id="error-message" class="text-red-500 text-sm mt-2 h-4"></p>
                 </div>
 
-                <!-- Order Summary -->
                 <div class="bg-white p-6 rounded-xl shadow-lg">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-2xl font-semibold">Bestellübersicht (${pizzeria.name})</h2>
-                        <button id="resetOrdersBtn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md">Liste zurücksetzen</button>
+                        <button id="resetOrdersBtn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md focus-ring">Liste zurücksetzen</button>
                     </div>
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div><h3 class="text-xl font-medium mb-3">Einzelbestellungen</h3><div id="individualOrders"></div></div>
@@ -203,7 +210,6 @@
         const setupOrderScreenEventListeners = (roundId) => {
             const ordersCollectionRef = collection(db, 'orderRounds', roundId, 'orders');
 
-            // Unsubscribe from previous listener if it exists
             if (currentOrdersUnsubscribe) currentOrdersUnsubscribe();
             
             currentOrdersUnsubscribe = onSnapshot(ordersCollectionRef, (snapshot) => {
@@ -212,22 +218,29 @@
             });
 
             document.getElementById('addOrderBtn').addEventListener('click', async () => {
-                const name = document.getElementById('nameInput').value.trim();
-                const isCustom = document.getElementById('customOrderToggle').checked;
-                const item = isCustom ? document.getElementById('customOrderInput').value.trim() : document.getElementById('pizzaSelect').value;
-                const price = parseFloat(document.getElementById('priceInput').value);
+                const nameInput = document.getElementById('nameInput');
+                const customToggle = document.getElementById('customOrderToggle');
+                const customInput = document.getElementById('customOrderInput');
+                const pizzaSelect = document.getElementById('pizzaSelect');
+                const priceInput = document.getElementById('priceInput');
+                const errorMessage = document.getElementById('error-message');
+
+                const name = nameInput.value.trim();
+                const isCustom = customToggle.checked;
+                const item = isCustom ? customInput.value.trim() : pizzaSelect.value;
+                const price = parseFloat(priceInput.value);
 
                 if (!name || !item || isNaN(price) || price <= 0) {
-                    document.getElementById('error-message').textContent = 'Bitte alle Felder korrekt ausfüllen.';
+                    errorMessage.textContent = 'Bitte alle Felder korrekt ausfüllen.';
                     return;
                 }
-                document.getElementById('error-message').textContent = '';
+                errorMessage.textContent = '';
                 
                 await addDoc(ordersCollectionRef, { name, item, price });
-                document.getElementById('nameInput').value = '';
-                document.getElementById('customOrderInput').value = '';
-                document.getElementById('priceInput').value = '';
-                document.getElementById('pizzaSelect').selectedIndex = 0;
+                nameInput.value = '';
+                customInput.value = '';
+                priceInput.value = '';
+                pizzaSelect.selectedIndex = 0;
             });
 
             document.getElementById('resetOrdersBtn').addEventListener('click', async () => {
@@ -252,6 +265,8 @@
             const consolidatedContainer = document.getElementById('consolidatedOrders');
             const totalContainer = document.getElementById('totalPriceContainer');
 
+            if (!individualContainer) return; // Guard against element not being on page during route change
+
             if (orders.length === 0) {
                 individualContainer.innerHTML = '<p class="text-gray-500">Noch keine Bestellungen.</p>';
                 consolidatedContainer.innerHTML = '';
@@ -262,7 +277,7 @@
             individualContainer.innerHTML = orders.map(order => `
                 <div class="py-2 flex justify-between items-center border-b">
                     <span><span class="font-semibold">${order.name}</span> bestellt <span class="text-red-600">${order.item}</span> für <strong>${order.price.toFixed(2)}€</strong></span>
-                    <button data-id="${order.id}" class="delete-btn text-xs bg-gray-200 px-2 py-1 rounded">Löschen</button>
+                    <button data-id="${order.id}" class="delete-btn text-xs bg-gray-200 px-2 py-1 rounded hover:bg-red-200 transition-colors">Löschen</button>
                 </div>`).join('');
             
             document.querySelectorAll('.delete-btn').forEach(btn => {
