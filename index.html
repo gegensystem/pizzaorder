@@ -233,10 +233,19 @@
                 ul.className = 'divide-y divide-gray-200';
                 orders.forEach(order => {
                     const li = document.createElement('li');
-                    li.className = 'py-2'; // Removed flex classes
+                    li.className = 'py-2 flex justify-between items-center';
                     const priceFormatted = order.price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-                    // Removed the delete button from the innerHTML
-                    li.innerHTML = `<span><span class="font-semibold">${order.name}</span> bestellt <span class="text-red-600">${order.item}</span> für <span class="font-bold">${priceFormatted}</span></span>`;
+                    
+                    const orderText = document.createElement('span');
+                    orderText.innerHTML = `<span class="font-semibold">${order.name}</span> bestellt <span class="text-red-600">${order.item}</span> für <span class="font-bold">${priceFormatted}</span>`;
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Löschen';
+                    deleteBtn.className = 'text-xs bg-gray-200 hover:bg-red-200 text-gray-700 px-2 py-1 rounded-md transition-colors';
+                    deleteBtn.onclick = () => promptToDeleteOrder(order.id);
+                    
+                    li.appendChild(orderText);
+                    li.appendChild(deleteBtn);
                     ul.appendChild(li);
                 });
                 individualOrdersContainer.appendChild(ul);
@@ -317,6 +326,26 @@
                 }
             }
             
+            async function removeOrder(id) {
+                try {
+                    await deleteDoc(doc(db, "orders", id));
+                } catch (error) {
+                    console.error("Error removing document: ", error);
+                    errorMessage.textContent = 'Fehler beim Löschen des Eintrags.';
+                }
+            }
+
+            async function promptToDeleteOrder(id) {
+                const password = prompt("Bitte geben Sie das Kennwort ein, um diesen Eintrag zu löschen:", "");
+                errorMessage.textContent = '';
+
+                if (password === "PizzaEngel") {
+                    await removeOrder(id);
+                } else if (password !== null) {
+                    errorMessage.textContent = 'Falsches Kennwort.';
+                }
+            }
+
             async function resetOrders() {
                 const password = prompt("Bitte geben Sie das Kennwort ein, um die Liste zurückzusetzen:", "");
 
