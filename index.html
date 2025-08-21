@@ -1,1 +1,321 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Bestell-App mit Datenbank</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font for a modern look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Apply the Inter font to the whole page */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc; /* A light gray background */
+        }
+        /* Custom focus styles for better accessibility */
+        .focus-ring:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.3); /* Red-ish ring */
+        }
+        /* Smooth transition for hiding/showing elements */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+
+        <!-- Header Section -->
+        <header class="text-center mb-8 md:mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-red-700">Sammel-Bestellung</h1>
+            <p class="text-gray-600 mt-2 text-lg">Für Pizza, Pasta & mehr – einfach und schnell!</p>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="space-y-8">
+
+            <!-- Input Form Card -->
+            <div class="bg-white p-6 rounded-xl shadow-lg transition-all hover:shadow-xl">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-3 text-gray-700">Neue Bestellung aufgeben</h2>
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
+                    <!-- Name Input -->
+                    <div class="md:col-span-2">
+                        <label for="nameInput" class="block text-sm font-medium text-gray-700 mb-1">Dein Name</label>
+                        <input type="text" id="nameInput" placeholder="Max Mustermann" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:border-red-500 focus-ring transition-shadow">
+                    </div>
+                    <!-- Pizza/Custom Selection -->
+                    <div class="md:col-span-2">
+                        <label for="pizzaSelect" class="block text-sm font-medium text-gray-700 mb-1">Wähle deine Bestellung</label>
+                        <select id="pizzaSelect" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:border-red-500 focus-ring transition-shadow bg-white"></select>
+                        <input type="text" id="customOrderInput" placeholder="z.B. Spaghetti Carbonara" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:border-red-500 focus-ring transition-shadow hidden">
+                        <div class="mt-2">
+                            <label class="flex items-center space-x-2 text-sm text-gray-600 cursor-pointer select-none">
+                                <input type="checkbox" id="customOrderToggle" class="rounded border-gray-300 text-red-600 shadow-sm focus:ring-red-500">
+                                <span>Eigene Bestellung eingeben</span>
+                            </label>
+                        </div>
+                    </div>
+                    <!-- Add Button -->
+                    <div class="md:col-span-1 self-end">
+                        <button id="addOrderBtn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus-ring transition-transform transform hover:scale-105">
+                            Hinzufügen
+                        </button>
+                    </div>
+                </div>
+                <!-- Error Message Display -->
+                <p id="error-message" class="text-red-500 text-sm mt-2 h-4"></p>
+            </div>
+
+            <!-- Order Summary Card -->
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold text-gray-700">Bestellübersicht</h2>
+                    <button id="resetOrdersBtn" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-md hover:bg-red-500 hover:text-white focus:outline-none focus-ring transition-colors text-sm">
+                        Liste zurücksetzen
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Individual Orders List -->
+                    <div>
+                        <h3 class="text-xl font-medium mb-3">Einzelbestellungen</h3>
+                        <div id="individualOrders" class="space-y-2 max-h-96 overflow-y-auto pr-2">
+                             <p class="text-gray-500">Noch keine Bestellungen vorhanden.</p>
+                        </div>
+                    </div>
+                    <!-- Consolidated Orders List -->
+                    <div>
+                        <h3 class="text-xl font-medium mb-3">Zusammenfassung</h3>
+                        <div id="consolidatedOrders" class="space-y-2">
+                            <p class="text-gray-500">Die Zusammenfassung wird hier angezeigt.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // Firebase Core SDK
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // Firebase Authentication
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Firebase Firestore
+        import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc, getDocs, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // --- FIREBASE SETUP ---
+            // Your web app's Firebase configuration provided by you.
+            const firebaseConfig = {
+              apiKey: "AIzaSyBzIgSa17e0xADhmUAP29vMSqN1GRjOCFk",
+              authDomain: "pizzaorder-fec41.firebaseapp.com",
+              projectId: "pizzaorder-fec41",
+              storageBucket: "pizzaorder-fec41.firebasestorage.app",
+              messagingSenderId: "662851560067",
+              appId: "1:662851560067:web:60b5843f159a11821671b6",
+              measurementId: "G-MMFJKPWZML"
+            };
+
+            let db, auth;
+            let ordersCollectionRef;
+
+            try {
+                // Initialize Firebase
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in anonymously to secure the database access
+                await signInAnonymously(auth);
+                
+                // Path to the 'orders' collection in your database
+                ordersCollectionRef = collection(db, "orders");
+                
+                // Start listening for real-time updates
+                listenForOrders();
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                // Display an error to the user if Firebase fails to load
+                document.body.innerHTML = '<div class="text-center p-8 text-red-500">Fehler bei der Verbindung zur Datenbank. Die App kann nicht geladen werden.</div>';
+                return;
+            }
+            
+            // --- DATA ---
+            const pizzaMenu = [
+                "Margherita", "Funghi", "Cardinale", "Salami", "Prosciutto", "Hawaii", "Diavolo", "Provinciale",
+                "Quattro Stagioni", "Capricciosa", "Tonno", "Rusticana", "Al Capone", "Quattro Formaggi",
+                "Venezia", "Spinaci", "Calzone", "Vegetaria", "Primavera", "Frutti di Mare"
+            ];
+
+            // --- ELEMENTS ---
+            const nameInput = document.getElementById('nameInput');
+            const pizzaSelect = document.getElementById('pizzaSelect');
+            const addOrderBtn = document.getElementById('addOrderBtn');
+            const individualOrdersContainer = document.getElementById('individualOrders');
+            const consolidatedOrdersContainer = document.getElementById('consolidatedOrders');
+            const errorMessage = document.getElementById('error-message');
+            const customOrderToggle = document.getElementById('customOrderToggle');
+            const customOrderInput = document.getElementById('customOrderInput');
+            const resetOrdersBtn = document.getElementById('resetOrdersBtn');
+
+            // --- INITIALIZATION ---
+            function populatePizzaSelect() {
+                pizzaSelect.innerHTML = '<option value="" disabled selected>Pizza aus der Liste wählen...</option>';
+                pizzaMenu.sort().forEach(pizza => {
+                    const option = document.createElement('option');
+                    option.value = pizza;
+                    option.textContent = pizza;
+                    pizzaSelect.appendChild(option);
+                });
+            }
+
+            // --- RENDER FUNCTIONS (called by the Firestore listener) ---
+            function renderOrders(orders) {
+                renderIndividualOrders(orders);
+                renderConsolidatedOrders(orders);
+            }
+
+            function renderIndividualOrders(orders) {
+                individualOrdersContainer.innerHTML = '';
+                if (orders.length === 0) {
+                    individualOrdersContainer.innerHTML = '<p class="text-gray-500">Noch keine Bestellungen vorhanden.</p>';
+                    return;
+                }
+                const ul = document.createElement('ul');
+                ul.className = 'divide-y divide-gray-200';
+                orders.forEach(order => {
+                    const li = document.createElement('li');
+                    li.className = 'py-2 flex justify-between items-center';
+                    li.innerHTML = `<span><span class="font-semibold">${order.name}</span> bestellt <span class="text-red-600">${order.item}</span></span>`;
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Löschen';
+                    deleteBtn.className = 'text-xs bg-gray-200 hover:bg-red-200 text-gray-700 px-2 py-1 rounded-md transition-colors';
+                    deleteBtn.onclick = () => removeOrder(order.id);
+                    li.appendChild(deleteBtn);
+                    ul.appendChild(li);
+                });
+                individualOrdersContainer.appendChild(ul);
+            }
+
+            function renderConsolidatedOrders(orders) {
+                consolidatedOrdersContainer.innerHTML = '';
+                if (orders.length === 0) {
+                    consolidatedOrdersContainer.innerHTML = '<p class="text-gray-500">Die Zusammenfassung wird hier angezeigt.</p>';
+                    return;
+                }
+                const itemCounts = orders.reduce((acc, order) => {
+                    acc[order.item] = (acc[order.item] || 0) + 1;
+                    return acc;
+                }, {});
+                const ul = document.createElement('ul');
+                ul.className = 'divide-y divide-gray-200';
+                // Sort items alphabetically for consistency
+                const sortedItems = Object.keys(itemCounts).sort();
+                sortedItems.forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'py-2 flex justify-between items-center';
+                    li.innerHTML = `
+                        <span class="font-semibold text-red-600">${item}</span>
+                        <span class="bg-red-600 text-white text-sm font-bold w-6 h-6 flex items-center justify-center rounded-full">${itemCounts[item]}</span>
+                    `;
+                    ul.appendChild(li);
+                });
+                consolidatedOrdersContainer.appendChild(ul);
+            }
+
+            // --- DATABASE INTERACTIONS ---
+            function listenForOrders() {
+                onSnapshot(ordersCollectionRef, (snapshot) => {
+                    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderOrders(orders);
+                });
+            }
+
+            async function addOrder() {
+                const name = nameInput.value.trim();
+                const isCustom = customOrderToggle.checked;
+                const item = isCustom ? customOrderInput.value.trim() : pizzaSelect.value;
+
+                if (!name || !item) {
+                    errorMessage.textContent = 'Bitte Name und Bestellung eingeben/auswählen.';
+                    return;
+                }
+                
+                errorMessage.textContent = '';
+                
+                try {
+                    // Add new document to Firestore
+                    await addDoc(ordersCollectionRef, { name, item });
+
+                    // Reset form fields
+                    nameInput.value = '';
+                    pizzaSelect.selectedIndex = 0;
+                    customOrderInput.value = '';
+                    if (customOrderToggle.checked) {
+                        customOrderToggle.checked = false;
+                        customOrderToggle.dispatchEvent(new Event('change'));
+                    }
+                    nameInput.focus();
+                } catch (error) {
+                    console.error("Error adding document: ", error);
+                    errorMessage.textContent = 'Fehler beim Speichern der Bestellung.';
+                }
+            }
+            
+            async function removeOrder(id) {
+                try {
+                    await deleteDoc(doc(db, "orders", id));
+                } catch (error) {
+                    console.error("Error removing document: ", error);
+                }
+            }
+
+            async function resetOrders() {
+                // This is a destructive action, so we log it.
+                console.log("Resetting all orders...");
+                try {
+                    const q = query(ordersCollectionRef);
+                    const querySnapshot = await getDocs(q);
+                    // Delete each document one by one
+                    querySnapshot.forEach(async (document) => {
+                        await deleteDoc(doc(db, "orders", document.id));
+                    });
+                } catch (error) {
+                    console.error("Error resetting orders: ", error);
+                }
+            }
+
+            // --- EVENT LISTENERS ---
+            addOrderBtn.addEventListener('click', addOrder);
+            resetOrdersBtn.addEventListener('click', resetOrders);
+            nameInput.addEventListener('keypress', e => e.key === 'Enter' && addOrder());
+            customOrderInput.addEventListener('keypress', e => e.key === 'Enter' && addOrder());
+
+            customOrderToggle.addEventListener('change', () => {
+                const isChecked = customOrderToggle.checked;
+                pizzaSelect.classList.toggle('hidden', isChecked);
+                customOrderInput.classList.toggle('hidden', !isChecked);
+                if (isChecked) {
+                    customOrderInput.focus();
+                } else {
+                    pizzaSelect.focus();
+                }
+            });
+
+            // --- INITIAL CALLS ---
+            populatePizzaSelect();
+            renderOrders([]); // Initial render for empty state before DB loads
+        });
+    </script>
+
+</body>
+</html>
 
