@@ -233,14 +233,10 @@
                 ul.className = 'divide-y divide-gray-200';
                 orders.forEach(order => {
                     const li = document.createElement('li');
-                    li.className = 'py-2 flex justify-between items-center';
+                    li.className = 'py-2'; // Removed flex classes
                     const priceFormatted = order.price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                    // Removed the delete button from the innerHTML
                     li.innerHTML = `<span><span class="font-semibold">${order.name}</span> bestellt <span class="text-red-600">${order.item}</span> für <span class="font-bold">${priceFormatted}</span></span>`;
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.textContent = 'Löschen';
-                    deleteBtn.className = 'text-xs bg-gray-200 hover:bg-red-200 text-gray-700 px-2 py-1 rounded-md transition-colors';
-                    deleteBtn.onclick = () => removeOrder(order.id);
-                    li.appendChild(deleteBtn);
                     ul.appendChild(li);
                 });
                 individualOrdersContainer.appendChild(ul);
@@ -321,14 +317,6 @@
                 }
             }
             
-            async function removeOrder(id) {
-                try {
-                    await deleteDoc(doc(db, "orders", id));
-                } catch (error) {
-                    console.error("Error removing document: ", error);
-                }
-            }
-
             async function resetOrders() {
                 const password = prompt("Bitte geben Sie das Kennwort ein, um die Liste zurückzusetzen:", "");
 
